@@ -363,7 +363,7 @@ function vPlaneados(){
       h+='<div class="row">'
         +'<button class="check'+(on?' on':'')+'" style="'+(on?'background:'+CATS[k].color:'')+'" onclick="event.stopPropagation();APP.togglePlanned(\''+t.id+'\')"><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></button>'
         +'<div class="rmid tap" onclick="APP.openTemplate(\''+t.id+'\')" style="cursor:pointer"><div class="t">'+esc(t.name)+'</div><div class="d"'+dstyle+'>'+sub+'</div></div>'
-        +'<div class="ramt num" style="color:'+(on?'var(--ink)':'var(--ink-3)')+'">'+fmt(t.amount)+'</div></div>';
+        +'<div class="ramt num" style="color:'+(on?'var(--ink)':'var(--ink-3)')+'">'+fmt(plannedAmount(t,curMonth))+'</div></div>';
     });
     h+='</div>';
   });
@@ -466,9 +466,15 @@ function delExpense(id){state.expenses=state.expenses.filter(e=>e.id!==id);save(
 function openTemplate(id){
   const editing=id?state.templates.find(t=>t.id===id):null;
   draft=editing?Object.assign({},editing):{cat:'ess',name:'',amount:''};
+  draft.amountScope='month';
+  const curName=monthLabel(curMonth).name;
   let h='<h3>'+(editing?'Editar planeado':'Nuevo gasto planeado')+'</h3>';
   h+='<input class="inline-in" id="tName" placeholder="Nombre (ej. Alquiler)" value="'+esc(draft.name||'')+'">';
-  h+='<input class="inline-in num" id="tAmt" inputmode="decimal" placeholder="Monto mensual" value="'+(editing?editing.amount:'')+'">';
+  h+='<input class="inline-in num" id="tAmt" inputmode="decimal" placeholder="Monto mensual" value="'+(editing?plannedAmount(editing,curMonth):'')+'">';
+  if(editing){
+    h+='<div class="seg" id="tScope" style="margin-bottom:8px"><button data-scope="month" class="on">Solo '+curName+'</button><button data-scope="all">Todos los meses</button></div>';
+    h+='<div class="link-note" id="tScopeNote" style="margin-top:0">El monto se aplica solo a '+curName+'. Nombre, categoría y vencimiento cambian en todos los meses.</div>';
+  }
   h+='<input class="inline-in num" id="tDue" inputmode="numeric" placeholder="Día de vencimiento (1-31, opcional)" value="'+(editing&&editing.dueDay?editing.dueDay:'')+'">';
   h+='<div class="chips" id="tChips">'+['ess','inv','fun'].map(k=>
     '<button class="chip'+(draft.cat===k?' on':'')+'" data-cat="'+k+'"><span class="cdot" style="background:color-mix(in srgb,'+CATS[k].color+' 18%,transparent)">'+CATS[k].icon+'</span><span class="cn">'+CATS[k].short+'</span></button>'
@@ -481,6 +487,8 @@ function openTemplate(id){
   }
   openSheet(h);
   document.getElementById('tChips').addEventListener('click',ev=>{const b=ev.target.closest('.chip');if(!b)return;draft.cat=b.dataset.cat;[...document.querySelectorAll('#tChips .chip')].forEach(c=>c.classList.toggle('on',c===b));});
+  const scope=document.getElementById('tScope');
+  if(scope)scope.addEventListener('click',ev=>{const b=ev.target.closest('button');if(!b)return;draft.amountScope=b.dataset.scope;[...scope.querySelectorAll('button')].forEach(c=>c.classList.toggle('on',c===b));document.getElementById('tScopeNote').textContent=draft.amountScope==='all'?'El monto se aplica a todos los meses (monto base). Nombre, categoría y vencimiento también.':'El monto se aplica solo a '+curName+'. Nombre, categoría y vencimiento cambian en todos los meses.';});
   setTimeout(()=>document.getElementById('tName').focus(),300);
 }
 function saveTemplate(id){
@@ -488,8 +496,13 @@ function saveTemplate(id){
   const amt=parseAmt(document.getElementById('tAmt').value);
   let due=parseInt(document.getElementById('tDue').value,10);if(!(due>=1&&due<=31))due=null;
   if(!name){toast('Poné un nombre');return;}
-  if(id){Object.assign(state.templates.find(t=>t.id===id),{name:name,amount:amt||0,cat:draft.cat,dueDay:due});}
-  else{state.templates.push({id:uid(),name:name,amount:amt||0,cat:draft.cat,dueDay:due});}
+  if(id){
+    const t=state.templates.find(x=>x.id===id);
+    t.name=name;t.cat=draft.cat;t.dueDay=due;
+    if(draft.amountScope==='all'){t.amount=amt||0;if(t.overrides)delete t.overrides[curMonth];}
+    else{t.overrides=t.overrides||{};if((amt||0)===(t.amount||0))delete t.overrides[curMonth];else t.overrides[curMonth]=amt||0;}
+    const e=state.expenses.find(x=>x.month===curMonth&&x.templateId===id);if(e)e.amount=amt||0;
+  }else{state.templates.push({id:uid(),name:name,amount:amt||0,cat:draft.cat,dueDay:due});}
   save();closeSheet();render();toast('Planeado guardado');
 }
 function delTemplate(id){
@@ -520,7 +533,7 @@ function openSkipped(){
   skipped.forEach(t=>{
     h+='<div class="row" style="box-shadow:none;background:var(--surface-2)">'
       +'<div class="swatch" style="background:var(--surface);color:var(--ink-3)">'+CATS[t.cat].icon+'</div>'
-      +'<div class="rmid"><div class="t">'+esc(t.name)+'</div><div class="d num">'+fmt(t.amount)+'</div></div>'
+      +'<div class="rmid"><div class="t">'+esc(t.name)+'</div><div class="d num">'+fmt(plannedAmount(t,curMonth))+'</div></div>'
       +'<button class="mini-btn" onclick="APP.restoreMonth(\''+t.id+'\')">Restaurar</button></div>';
   });
   h+='<button class="btn-full ghost" style="margin-top:8px" onclick="APP.closeSheet()">Cerrar</button>';
@@ -529,7 +542,7 @@ function openSkipped(){
 function togglePlanned(tid){
   const existing=state.expenses.find(e=>e.month===curMonth&&e.templateId===tid);
   if(existing){state.expenses=state.expenses.filter(e=>e!==existing);}
-  else{const t=state.templates.find(x=>x.id===tid);state.expenses.push({id:uid(),amount:t.amount,desc:t.name,date:pickDate(curMonth),month:curMonth,cat:t.cat,templateId:tid});}
+  else{const t=state.templates.find(x=>x.id===tid);state.expenses.push({id:uid(),amount:plannedAmount(t,curMonth),desc:t.name,date:pickDate(curMonth),month:curMonth,cat:t.cat,templateId:tid});}
   save();render();
 }
 function pickDate(m){const today=todayISO();return today.slice(0,7)===m?today:m+'-01';}
@@ -592,6 +605,12 @@ function dueInfo(t){
   const iso=curMonth+'-'+String(day).padStart(2,'0');
   const overdue=(curMonth===todayISO().slice(0,7))&&(todayISO()>iso);
   return {str:String(day).padStart(2,'0')+'/'+String(mo).padStart(2,'0'),overdue:overdue};
+}
+function plannedAmount(t,m){
+  const e=state.expenses.find(x=>x.month===m&&x.templateId===t.id);
+  if(e)return e.amount;
+  if(t.overrides&&t.overrides[m]!=null)return t.overrides[m];
+  return t.amount;
 }
 
 /* ---------- wire up ---------- */
