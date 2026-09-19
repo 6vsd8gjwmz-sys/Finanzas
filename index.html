@@ -76,6 +76,17 @@ main{padding:6px 18px 18px}
 .strip .lbl{font-size:11px;color:var(--ink-3);font-weight:600;letter-spacing:.02em}
 .strip .val{font-family:"Space Grotesk";font-weight:600;font-size:17px;margin-top:3px;letter-spacing:-.01em}
 .strip .val.neg{color:var(--danger)}
+.psum{background:var(--surface);border-radius:18px;padding:15px 16px 14px;box-shadow:var(--shadow);margin-bottom:14px}
+.psum-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px}
+.psum-lbl{font-size:12px;color:var(--ink-3);font-weight:600}
+.psum-total{font-family:"Space Grotesk";font-weight:700;font-size:20px;letter-spacing:-.02em}
+.psum-grid{display:flex;gap:8px}
+.psum-cell{flex:1;background:var(--surface-2);border-radius:12px;padding:9px 10px}
+.psum-cellh{display:flex;align-items:center;gap:5px;margin-bottom:4px}
+.psum-cellh .dot{width:8px;height:8px;border-radius:3px}
+.psum-cl{font-size:10.5px;color:var(--ink-3);font-weight:600}
+.psum-cv{font-size:13px;font-weight:600;font-family:"Space Grotesk";letter-spacing:-.01em}
+.msum{display:flex;align-items:baseline;justify-content:space-between;gap:10px;background:var(--surface);border-radius:16px;padding:14px 16px;box-shadow:var(--shadow);margin-bottom:12px}
 
 /* ---------- allocation bar ---------- */
 .alloc-wrap{margin:0 0 20px}
@@ -333,6 +344,8 @@ function vMovimientos(){
   if(!list.length){
     return h+'<div class="empty"><div class="ico">🧾</div><div class="et">Sin gastos este mes</div><div class="es">Tocá el botón + para registrar tu primer movimiento.</div></div>';
   }
+  const sp=spentBy(curMonth);const totalMov=sp.ess+sp.inv+sp.fun;
+  h+='<div class="msum"><span class="psum-lbl">Total del mes · '+monthLabel(curMonth).name+'</span><span class="psum-total num">'+fmt(totalMov)+'</span></div>';
   list.forEach(e=>{
     const c=CATS[e.cat];
     h+='<div class="row tap" onclick="APP.openExpense(\''+e.id+'\')">'
@@ -350,6 +363,10 @@ function vPlaneados(){
   }
   const paidMap={};monthExpenses(curMonth).forEach(e=>{if(e.templateId)paidMap[e.templateId]=e;});
   const isSkipped=(t)=>(t.skips||[]).indexOf(curMonth)>=0;
+  const pt=plannedTotals();
+  h+='<div class="psum"><div class="psum-top"><span class="psum-lbl">Total planeado · '+monthLabel(curMonth).name+'</span><span class="psum-total num">'+fmt(pt.all)+'</span></div><div class="psum-grid">'
+    +['ess','inv','fun'].map(k=>'<div class="psum-cell"><div class="psum-cellh"><span class="dot" style="background:'+CATS[k].color+'"></span><span class="psum-cl">'+CATS[k].short+'</span></div><span class="psum-cv num">'+fmt(pt[k])+'</span></div>').join('')
+    +'</div></div>';
   ['ess','inv','fun'].forEach(k=>{
     const items=state.templates.filter(t=>t.cat===k&&!isSkipped(t)).sort((a,b)=>((a.dueDay||99)-(b.dueDay||99)));
     if(!items.length)return;
@@ -611,6 +628,12 @@ function plannedAmount(t,m){
   if(e)return e.amount;
   if(t.overrides&&t.overrides[m]!=null)return t.overrides[m];
   return t.amount;
+}
+function plannedTotals(){
+  const skip=(t)=>(t.skips||[]).indexOf(curMonth)>=0;
+  const r={ess:0,inv:0,fun:0,all:0};
+  state.templates.forEach(t=>{if(skip(t))return;const a=plannedAmount(t,curMonth);r[t.cat]+=a;r.all+=a;});
+  return r;
 }
 
 /* ---------- wire up ---------- */
