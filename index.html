@@ -351,15 +351,18 @@ function vPlaneados(){
   const paidMap={};monthExpenses(curMonth).forEach(e=>{if(e.templateId)paidMap[e.templateId]=e;});
   const isSkipped=(t)=>(t.skips||[]).indexOf(curMonth)>=0;
   ['ess','inv','fun'].forEach(k=>{
-    const items=state.templates.filter(t=>t.cat===k&&!isSkipped(t));
+    const items=state.templates.filter(t=>t.cat===k&&!isSkipped(t)).sort((a,b)=>((a.dueDay||99)-(b.dueDay||99)));
     if(!items.length)return;
     const paidCount=items.filter(t=>paidMap[t.id]).length;
     h+='<div class="planned-group"><div class="pg-title"><span class="dot" style="background:'+CATS[k].color+'"></span>'+CATS[k].name+' <span style="color:var(--ink-3);font-weight:600">· '+paidCount+'/'+items.length+'</span></div>';
     items.forEach(t=>{
       const on=!!paidMap[t.id];
+      const di=dueInfo(t);
+      const sub=on?'Pagado este mes':(di?(di.overdue?'Venció el '+di.str:'Vence el '+di.str):'Pendiente de pago');
+      const dstyle=(!on&&di&&di.overdue)?' style="color:var(--danger);font-weight:600"':'';
       h+='<div class="row">'
         +'<button class="check'+(on?' on':'')+'" style="'+(on?'background:'+CATS[k].color:'')+'" onclick="event.stopPropagation();APP.togglePlanned(\''+t.id+'\')"><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></button>'
-        +'<div class="rmid tap" onclick="APP.openTemplate(\''+t.id+'\')" style="cursor:pointer"><div class="t">'+esc(t.name)+'</div><div class="d">'+(on?'Pagado este mes':'Pendiente de pago')+'</div></div>'
+        +'<div class="rmid tap" onclick="APP.openTemplate(\''+t.id+'\')" style="cursor:pointer"><div class="t">'+esc(t.name)+'</div><div class="d"'+dstyle+'>'+sub+'</div></div>'
         +'<div class="ramt num" style="color:'+(on?'var(--ink)':'var(--ink-3)')+'">'+fmt(t.amount)+'</div></div>';
     });
     h+='</div>';
@@ -466,6 +469,7 @@ function openTemplate(id){
   let h='<h3>'+(editing?'Editar planeado':'Nuevo gasto planeado')+'</h3>';
   h+='<input class="inline-in" id="tName" placeholder="Nombre (ej. Alquiler)" value="'+esc(draft.name||'')+'">';
   h+='<input class="inline-in num" id="tAmt" inputmode="decimal" placeholder="Monto mensual" value="'+(editing?editing.amount:'')+'">';
+  h+='<input class="inline-in num" id="tDue" inputmode="numeric" placeholder="Día de vencimiento (1-31, opcional)" value="'+(editing&&editing.dueDay?editing.dueDay:'')+'">';
   h+='<div class="chips" id="tChips">'+['ess','inv','fun'].map(k=>
     '<button class="chip'+(draft.cat===k?' on':'')+'" data-cat="'+k+'"><span class="cdot" style="background:color-mix(in srgb,'+CATS[k].color+' 18%,transparent)">'+CATS[k].icon+'</span><span class="cn">'+CATS[k].short+'</span></button>'
   ).join('')+'</div>';
@@ -482,9 +486,10 @@ function openTemplate(id){
 function saveTemplate(id){
   const name=document.getElementById('tName').value.trim();
   const amt=parseAmt(document.getElementById('tAmt').value);
+  let due=parseInt(document.getElementById('tDue').value,10);if(!(due>=1&&due<=31))due=null;
   if(!name){toast('Poné un nombre');return;}
-  if(id){Object.assign(state.templates.find(t=>t.id===id),{name:name,amount:amt||0,cat:draft.cat});}
-  else{state.templates.push({id:uid(),name:name,amount:amt||0,cat:draft.cat});}
+  if(id){Object.assign(state.templates.find(t=>t.id===id),{name:name,amount:amt||0,cat:draft.cat,dueDay:due});}
+  else{state.templates.push({id:uid(),name:name,amount:amt||0,cat:draft.cat,dueDay:due});}
   save();closeSheet();render();toast('Planeado guardado');
 }
 function delTemplate(id){
@@ -579,6 +584,15 @@ function wipe(){askConfirm({title:'Borrar todos los datos',body:'Se borran salar
 function parseAmt(v){if(v==null)return 0;v=(''+v).replace(/\s/g,'').replace(/\.(?=\d{3}\b)/g,'').replace(',','.').replace(/[^0-9.]/g,'');return parseFloat(v)||0;}
 function esc(s){return (s==null?'':''+s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function fmtDate(iso){const[y,m,d]=iso.split('-');return d+'/'+m;}
+function dueInfo(t){
+  if(!t.dueDay)return null;
+  const y=+curMonth.slice(0,4),mo=+curMonth.slice(5,7);
+  const last=new Date(y,mo,0).getDate();
+  const day=Math.min(t.dueDay,last);
+  const iso=curMonth+'-'+String(day).padStart(2,'0');
+  const overdue=(curMonth===todayISO().slice(0,7))&&(todayISO()>iso);
+  return {str:String(day).padStart(2,'0')+'/'+String(mo).padStart(2,'0'),overdue:overdue};
+}
 
 /* ---------- wire up ---------- */
 document.getElementById('prevM').onclick=()=>{curMonth=shiftMonth(curMonth,-1);render();};
